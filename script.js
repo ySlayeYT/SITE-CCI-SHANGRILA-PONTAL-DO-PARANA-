@@ -1,6 +1,6 @@
 // Importando o Firebase diretamente do Google
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // SUAS CHAVES DO FIREBASE
 const firebaseConfig = {
@@ -25,7 +25,7 @@ window.imprimirFicha = imprimirFicha;
 window.editarFicha = editarFicha;
 
 let participantes = [];
-let idEditando = null; // Variável para controlar se estamos editando um cadastro
+let idEditando = null; 
 
 // Alternar entre abas
 function switchTab(tabId) {
@@ -80,18 +80,20 @@ document.getElementById('form-cadastro').addEventListener('submit', async functi
 async function salvarOuAtualizarNoFirebase(participante) {
     try {
         if (idEditando) {
-            // Se tem um ID, significa que estamos editando
             const docRef = doc(db, "participantes", idEditando);
-            // Se nenhuma foto nova foi selecionada, removemos a chave foto para não apagar a anterior
-            if (!participante.foto) {
-                delete participante.foto;
+            
+            // Busca o participante atual para preservar a foto antiga caso nenhuma nova tenha sido enviada
+            const participanteAntigo = participantes.find(p => p.id === idEditando);
+            if (!participante.foto && participanteAntigo && participanteAntigo.foto) {
+                participante.foto = participanteAntigo.foto;
             }
+
             await updateDoc(docRef, participante);
             alert('Ficha atualizada com sucesso!');
             idEditando = null;
             document.querySelector('.btn-submit').textContent = "Salvar Ficha";
         } else {
-            // Senão, cria um novo registro
+            if (!participante.foto) participante.foto = null;
             await addDoc(collection(db, "participantes"), participante);
             alert('Ficha salva com sucesso no Banco de Dados!');
         }
@@ -163,7 +165,6 @@ function editarFicha(id) {
 
     idEditando = id;
 
-    // Preenche o formulário com os dados atuais
     document.getElementById('nome').value = p.nome || '';
     document.getElementById('cpf').value = p.cpf || '';
     document.getElementById('data_nasc').value = p.data_nasc || '';
@@ -176,7 +177,6 @@ function editarFicha(id) {
     document.getElementById('atividade').value = p.atividade || '';
     document.getElementById('medicamentos').value = p.medicamentos || '';
 
-    // Muda para a aba de cadastro e altera o texto do botão
     switchTab('cadastro');
     document.querySelector('.btn-submit').textContent = "Atualizar Ficha";
 }
