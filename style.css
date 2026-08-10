@@ -270,3 +270,15 @@ th {
 
     .ficha-row strong { margin-right: 5px; }
 }
+.btn-edit {
+    background-color: #ffc107;
+    color: #212529;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    margin-right: 5px;
+}
+.btn-edit:hover { background-color: #e0a800; }
