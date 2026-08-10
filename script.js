@@ -17,13 +17,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Deixa o escopo global acessar as funções que estão dentro do módulo
+// Deixa o escopo global acessar as funções
 window.switchTab = switchTab;
 window.filtrarLista = filtrarLista;
 window.excluirFicha = excluirFicha;
 window.imprimirFicha = imprimirFicha;
+window.editarFicha = editarFicha;
 
 let participantes = [];
+let idEditando = null; // Variável para controlar se estamos editando um cadastro
 
 // Alternar entre abas
 function switchTab(tabId) {
@@ -42,7 +44,7 @@ function convertImageToBase64(file, callback) {
     reader.readAsDataURL(file);
 }
 
-// Salvar no Banco de Dados Firebase
+// Salvar ou Atualizar no Banco de Dados Firebase
 document.getElementById('form-cadastro').addEventListener('submit', async function(e) {
     e.preventDefault();
     const btnSalvar = document.querySelector('.btn-submit');
@@ -62,32 +64,46 @@ document.getElementById('form-cadastro').addEventListener('submit', async functi
         endereco: document.getElementById('endereco').value,
         profissao: document.getElementById('profissao').value,
         atividade: document.getElementById('atividade').value,
-        medicamentos: document.getElementById('medicamentos').value,
-        foto: null
+        medicamentos: document.getElementById('medicamentos').value
     };
 
     if (fotoInput.files.length > 0) {
         convertImageToBase64(fotoInput.files[0], async (base64Img) => {
             participante.foto = base64Img;
-            await enviarParaFirebase(participante);
+            await salvarOuAtualizarNoFirebase(participante);
         });
     } else {
-        await enviarParaFirebase(participante);
+        await salvarOuAtualizarNoFirebase(participante);
     }
 });
 
-async function enviarParaFirebase(participante) {
+async function salvarOuAtualizarNoFirebase(participante) {
     try {
-        await addDoc(collection(db, "participantes"), participante);
-        alert('Ficha salva com sucesso no Banco de Dados!');
+        if (idEditando) {
+            // Se tem um ID, significa que estamos editando
+            const docRef = doc(db, "participantes", idEditando);
+            // Se nenhuma foto nova foi selecionada, removemos a chave foto para não apagar a anterior
+            if (!participante.foto) {
+                delete participante.foto;
+            }
+            await updateDoc(docRef, participante);
+            alert('Ficha atualizada com sucesso!');
+            idEditando = null;
+            document.querySelector('.btn-submit').textContent = "Salvar Ficha";
+        } else {
+            // Senão, cria um novo registro
+            await addDoc(collection(db, "participantes"), participante);
+            alert('Ficha salva com sucesso no Banco de Dados!');
+        }
+
         document.getElementById('form-cadastro').reset();
         switchTab('lista');
     } catch (e) {
-        console.error("Erro ao adicionar: ", e);
+        console.error("Erro ao salvar: ", e);
         alert('Erro ao salvar no banco. Verifique sua conexão.');
     } finally {
         const btnSalvar = document.querySelector('.btn-submit');
-        btnSalvar.textContent = "Salvar Ficha";
+        if (!idEditando) btnSalvar.textContent = "Salvar Ficha";
         btnSalvar.disabled = false;
     }
 }
@@ -102,7 +118,7 @@ async function buscarParticipantesNoBanco() {
         const querySnapshot = await getDocs(collection(db, "participantes"));
         querySnapshot.forEach((doc) => {
             let p = doc.data();
-            p.id = doc.id; // ID único gerado pelo Firebase
+            p.id = doc.id; 
             participantes.push(p);
         });
         atualizarTabela(participantes);
@@ -125,6 +141,7 @@ function atualizarTabela(lista) {
             <td>${p.balneario}</td>
             <td>${p.atividade}</td>
             <td>
+                <button class="btn-edit" onclick="editarFicha('${p.id}')">Editar</button>
                 <button class="btn-print" onclick="imprimirFicha('${p.id}')">Imprimir</button>
                 <button class="btn-delete" onclick="excluirFicha('${p.id}')">Excluir</button>
             </td>
@@ -139,12 +156,37 @@ function filtrarLista() {
     atualizarTabela(listaFiltrada);
 }
 
+// Função para carregar os dados na aba de cadastro para edição
+function editarFicha(id) {
+    const p = participantes.find(part => part.id === id);
+    if (!p) return;
+
+    idEditando = id;
+
+    // Preenche o formulário com os dados atuais
+    document.getElementById('nome').value = p.nome || '';
+    document.getElementById('cpf').value = p.cpf || '';
+    document.getElementById('data_nasc').value = p.data_nasc || '';
+    document.getElementById('ano_inscricao').value = p.ano_inscricao || '2026';
+    document.getElementById('tel_pessoal').value = p.tel_pessoal || '';
+    document.getElementById('tel_resp').value = p.tel_resp || '';
+    document.getElementById('balneario').value = p.balneario || '';
+    document.getElementById('endereco').value = p.endereco || '';
+    document.getElementById('profissao').value = p.profissao || '';
+    document.getElementById('atividade').value = p.atividade || '';
+    document.getElementById('medicamentos').value = p.medicamentos || '';
+
+    // Muda para a aba de cadastro e altera o texto do botão
+    switchTab('cadastro');
+    document.querySelector('.btn-submit').textContent = "Atualizar Ficha";
+}
+
 // Excluir do Firebase
 async function excluirFicha(id) {
     if(confirm('Tem certeza que deseja excluir da nuvem definitivamente?')) {
         try {
             await deleteDoc(doc(db, "participantes", id));
-            buscarParticipantesNoBanco(); // Atualiza a lista
+            buscarParticipantesNoBanco(); 
         } catch (e) {
             console.error("Erro ao excluir: ", e);
             alert("Erro ao excluir");
@@ -153,6 +195,7 @@ async function excluirFicha(id) {
 }
 
 function formatarData(dataISO) {
+    if (!dataISO) return '';
     const [ano, mes, dia] = dataISO.split('-');
     return `${dia}/${mes}/${ano}`;
 }
