@@ -24,6 +24,9 @@ window.excluirFicha = excluirFicha;
 window.imprimirFicha = imprimirFicha;
 window.editarFicha = editarFicha;
 window.anexarAtestado = anexarAtestado;
+window.verAtestados = verAtestados;
+window.fecharModalAtestados = fecharModalAtestados;
+window.excluirAtestado = excluirAtestado;
 
 let participantes = [];
 let idEditando = null; 
@@ -83,7 +86,6 @@ async function salvarOuAtualizarNoFirebase(participante) {
         if (idEditando) {
             const docRef = doc(db, "participantes", idEditando);
             
-            // Busca o participante atual para preservar a foto antiga caso nenhuma nova tenha sido enviada
             const participanteAntigo = participantes.find(p => p.id === idEditando);
             if (!participante.foto && participanteAntigo && participanteAntigo.foto) {
                 participante.foto = participanteAntigo.foto;
@@ -137,6 +139,7 @@ function atualizarTabela(lista) {
     document.getElementById('total-count').textContent = lista.length;
 
     lista.forEach(p => {
+        const qtdAtestados = (p.atestados || []).length;
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${p.nome}</strong></td>
@@ -144,8 +147,9 @@ function atualizarTabela(lista) {
             <td>${p.balneario}</td>
             <td>${p.atividade}</td>
             <td>
-                <span class="atestado-count">${(p.atestados || []).length}</span>
-                <button class="btn-atestado" onclick="anexarAtestado('${p.id}')">Anexar atestado</button>
+                <span class="atestado-count">${qtdAtestados}</span>
+                <button class="btn-atestado" onclick="anexarAtestado('${p.id}')">Anexar</button>
+                ${qtdAtestados > 0 ? `<button class="btn-ver-atestado" onclick="verAtestados('${p.id}')">Ver/Excluir</button>` : ''}
             </td>
             <td>
                 <button class="btn-edit" onclick="editarFicha('${p.id}')">Editar</button>
@@ -174,7 +178,6 @@ function editarFicha(id) {
 
     idEditando = p.id;
 
-    // Preenche os campos com segurança, inclusive para cadastros antigos.
     const campos = {
         nome: p.nome || '',
         cpf: p.cpf || '',
@@ -202,7 +205,6 @@ function editarFicha(id) {
         btnSalvar.disabled = false;
     }
 
-    // Leva o usuário diretamente para o início da ficha.
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -230,9 +232,8 @@ function imprimirFicha(id) {
     if(!p) return;
     const printArea = document.getElementById('print-area');
     const fotoHtml = p.foto ? `<img src="${p.foto}" class="ficha-photo" alt="Foto">` : `<div class="ficha-photo-placeholder">Sem Foto</div>`;
-    const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : (p.ano_inscricao || '');
-    const atestados = p.atestados || [];
-    const atestadosHtml = atestados.length ? `<ul class="atestados-print-list">${atestados.map(a => `<li>${a.nome || 'Atestado'}${a.data ? ` — enviado em ${formatarData(a.data)}` : ''}</li>`).join('')}</ul>` : '<p>Nenhum atestado anexado.</p>';
+    const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : '';
+    
     printArea.innerHTML = `
         <div class="ficha-print">
             <div class="ficha-header"><h2>CCI Pontal do Paraná - Ficha de Inscrição</h2><p>Data da inscrição: ${dataInscricao}</p></div>
@@ -251,7 +252,6 @@ function imprimirFicha(id) {
                     <div class="ficha-row"><strong>Medicamentos:</strong> ${p.medicamentos}</div>
                 </div>
             </div>
-            <div class="atestados-print"><h3>Atestados apresentados</h3>${atestadosHtml}</div>
             <div class="assinatura-page">
                 <h2>Assinatura do Participante</h2>
                 <p class="assinatura-texto">Declaro que as informações desta ficha foram conferidas e estou de acordo com os dados apresentados.</p>
@@ -266,10 +266,8 @@ function imprimirFicha(id) {
 function lerArquivoComoBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(reader.error || new Error("Falha ao ler o arquivo."));
-
         reader.readAsDataURL(file);
     });
 }
@@ -295,10 +293,7 @@ async function anexarAtestado(id) {
         const textoOriginal = btn ? btn.textContent : '';
 
         try {
-            // Limite conservador para não estourar o tamanho de um documento
-            // do Firestore. Para arquivos grandes, o usuário deve reduzir o PDF.
             const limite = 3 * 1024 * 1024;
-
             const invalidos = arquivos.filter(file =>
                 file.size > limite ||
                 (!file.type.startsWith('image/') && file.type !== 'application/pdf')
@@ -318,7 +313,6 @@ async function anexarAtestado(id) {
 
             for (const arquivo of arquivos) {
                 const base64 = await lerArquivoComoBase64(arquivo);
-
                 atestadosAtuais.push({
                     nome: arquivo.name,
                     tipo: arquivo.type,
@@ -338,14 +332,11 @@ async function anexarAtestado(id) {
             alert(`${arquivos.length} atestado(s) anexado(s) com sucesso.`);
         } catch (e) {
             console.error("Erro ao anexar atestado:", e);
-            alert(
-                'Não foi possível anexar o atestado. ' +
-                'Verifique a conexão com o Firebase e tente novamente.'
-            );
+            alert('Não foi possível anexar o atestado. Verifique a conexão com o Firebase e tente novamente.');
         } finally {
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = textoOriginal || 'Anexar atestado';
+                btn.textContent = textoOriginal || 'Anexar';
             }
             input.remove();
         }
@@ -353,6 +344,65 @@ async function anexarAtestado(id) {
 
     document.body.appendChild(input);
     input.click();
+}
+
+function verAtestados(id) {
+    const p = participantes.find(part => part.id === id);
+    if (!p || !p.atestados || p.atestados.length === 0) return;
+
+    const modalBody = document.getElementById('lista-atestados-modal');
+    modalBody.innerHTML = '';
+
+    p.atestados.forEach((atestado, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'atestado-item-modal';
+        
+        let visualizacaoHtml = '';
+        if (atestado.tipo && atestado.tipo.startsWith('image/')) {
+            visualizacaoHtml = `<img src="${atestado.arquivo}" alt="${atestado.nome}" style="max-width:100%; max-height:300px; display:block; margin-bottom:10px;" />`;
+        } else {
+            visualizacaoHtml = `<embed src="${atestado.arquivo}" type="application/pdf" width="100%" height="300px" style="margin-bottom:10px;" />`;
+        }
+
+        itemDiv.innerHTML = `
+            <p><strong>${atestado.nome}</strong> ${atestado.data ? `(Enviado em: ${formatarData(atestado.data)})` : ''}</p>
+            ${visualizacaoHtml}
+            <button class="btn-delete" onclick="excluirAtestado('${p.id}', ${index})">Excluir este Atestado</button>
+            <hr style="margin: 15px 0;">
+        `;
+        modalBody.appendChild(itemDiv);
+    });
+
+    document.getElementById('modal-atestados').style.display = 'flex';
+}
+
+function fecharModalAtestados() {
+    document.getElementById('modal-atestados').style.display = 'none';
+}
+
+async function excluirAtestado(participanteId, indexAtestado) {
+    if (!confirm('Deseja realmente excluir este atestado?')) return;
+
+    const p = participantes.find(part => part.id === participanteId);
+    if (!p) return;
+
+    p.atestados.splice(indexAtestado, 1);
+
+    try {
+        const docRef = doc(db, "participantes", participanteId);
+        await updateDoc(docRef, { atestados: p.atestados });
+        
+        alert('Atestado excluído com sucesso!');
+        if (p.atestados.length === 0) {
+            fecharModalAtestados();
+        } else {
+            verAtestados(participanteId);
+        }
+        atualizarTabela(participantes);
+    } catch (e) {
+        console.error("Erro ao excluir atestado:", e);
+        alert('Erro ao excluir o atestado no banco de dados.');
+    }
 }
 
 window.onload = () => {
