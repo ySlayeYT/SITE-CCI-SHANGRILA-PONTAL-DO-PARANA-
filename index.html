@@ -52,8 +52,8 @@
                     </div>
 
                     <div class="input-group">
-                        <label for="ano_inscricao">Ano da Inscrição *</label>
-                        <input type="number" id="ano_inscricao" required value="2026">
+                        <label for="data_inscricao">Data da Inscrição *</label>
+                        <input type="date" id="data_inscricao" required>
                     </div>
 
                     <div class="input-group">
@@ -122,6 +122,19 @@
             </div>
         </section>
     </main>
+
+    <!-- Modal para Visualizar e Gerenciar Atestados -->
+    <div id="modal-atestados" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Atestados do Participante</h3>
+                <button type="button" onclick="fecharModalAtestados()" class="btn-close">&times;</button>
+            </div>
+            <div id="lista-atestados-modal" class="modal-body">
+                <!-- Preenchido via JS -->
+            </div>
+        </div>
+    </div>
 
     <!-- ÁREA DE IMPRESSÃO (Oculta na tela, visível apenas no papel) -->
     <div id="print-area">
