@@ -1,6 +1,7 @@
 // Importando o Firebase diretamente do Google
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // SUAS CHAVES DO FIREBASE
 const firebaseConfig = {
@@ -16,6 +17,7 @@ const firebaseConfig = {
 // Inicializando o Banco de Dados
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // Deixa o escopo global acessar as funções
 window.switchTab = switchTab;
@@ -23,6 +25,7 @@ window.filtrarLista = filtrarLista;
 window.excluirFicha = excluirFicha;
 window.imprimirFicha = imprimirFicha;
 window.editarFicha = editarFicha;
+window.anexarAtestado = anexarAtestado;
 
 let participantes = [];
 let idEditando = null; 
@@ -57,7 +60,7 @@ document.getElementById('form-cadastro').addEventListener('submit', async functi
         nome: document.getElementById('nome').value,
         cpf: document.getElementById('cpf').value,
         data_nasc: document.getElementById('data_nasc').value,
-        ano_inscricao: document.getElementById('ano_inscricao').value,
+        data_inscricao: document.getElementById('data_inscricao').value,
         tel_pessoal: document.getElementById('tel_pessoal').value,
         tel_resp: document.getElementById('tel_resp').value,
         balneario: document.getElementById('balneario').value,
@@ -143,6 +146,10 @@ function atualizarTabela(lista) {
             <td>${p.balneario}</td>
             <td>${p.atividade}</td>
             <td>
+                <span class="atestado-count">${(p.atestados || []).length}</span>
+                <button class="btn-atestado" onclick="anexarAtestado('${p.id}')">Anexar atestado</button>
+            </td>
+            <td>
                 <button class="btn-edit" onclick="editarFicha('${p.id}')">Editar</button>
                 <button class="btn-print" onclick="imprimirFicha('${p.id}')">Imprimir</button>
                 <button class="btn-delete" onclick="excluirFicha('${p.id}')">Excluir</button>
@@ -168,7 +175,7 @@ function editarFicha(id) {
     document.getElementById('nome').value = p.nome || '';
     document.getElementById('cpf').value = p.cpf || '';
     document.getElementById('data_nasc').value = p.data_nasc || '';
-    document.getElementById('ano_inscricao').value = p.ano_inscricao || '2026';
+    document.getElementById('data_inscricao').value = p.data_inscricao || (p.ano_inscricao ? `${p.ano_inscricao}-01-01` : '');
     document.getElementById('tel_pessoal').value = p.tel_pessoal || '';
     document.getElementById('tel_resp').value = p.tel_resp || '';
     document.getElementById('balneario').value = p.balneario || '';
@@ -203,19 +210,14 @@ function formatarData(dataISO) {
 function imprimirFicha(id) {
     const p = participantes.find(part => part.id === id);
     if(!p) return;
-
     const printArea = document.getElementById('print-area');
-    
-    const fotoHtml = p.foto 
-        ? `<img src="${p.foto}" class="ficha-photo" alt="Foto">` 
-        : `<div class="ficha-photo-placeholder">Sem Foto</div>`;
-
+    const fotoHtml = p.foto ? `<img src="${p.foto}" class="ficha-photo" alt="Foto">` : `<div class="ficha-photo-placeholder">Sem Foto</div>`;
+    const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : (p.ano_inscricao || '');
+    const atestados = p.atestados || [];
+    const atestadosHtml = atestados.length ? `<ul class="atestados-print-list">${atestados.map(a => `<li>${a.nome || 'Atestado'}${a.data ? ` — enviado em ${formatarData(a.data)}` : ''}</li>`).join('')}</ul>` : '<p>Nenhum atestado anexado.</p>';
     printArea.innerHTML = `
         <div class="ficha-print">
-            <div class="ficha-header">
-                <h2>CCI Pontal do Paraná - Ficha de Inscrição</h2>
-                <p>Ano letivo: ${p.ano_inscricao}</p>
-            </div>
+            <div class="ficha-header"><h2>CCI Pontal do Paraná - Ficha de Inscrição</h2><p>Data da inscrição: ${dataInscricao}</p></div>
             <div class="ficha-content">
                 ${fotoHtml}
                 <div class="ficha-data">
@@ -231,9 +233,48 @@ function imprimirFicha(id) {
                     <div class="ficha-row"><strong>Medicamentos:</strong> ${p.medicamentos}</div>
                 </div>
             </div>
-        </div>
-    `;
+            <div class="atestados-print"><h3>Atestados apresentados</h3>${atestadosHtml}</div>
+            <div class="assinatura-page">
+                <h2>Assinatura do Participante</h2>
+                <p class="assinatura-texto">Declaro que as informações desta ficha foram conferidas e estou de acordo com os dados apresentados.</p>
+                <div class="assinatura-data">Data: ____/____/________</div>
+                <div class="assinatura-linha"></div>
+                <p class="assinatura-nome">${p.nome}</p><p class="assinatura-legenda">Assinatura do participante</p>
+            </div>
+        </div>`;
     window.print();
+}
+
+function anexarAtestado(id) {
+    const p = participantes.find(part => part.id === id);
+    if (!p) return;
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.pdf,image/*'; input.multiple = true; input.style.display = 'none';
+    input.addEventListener('change', async () => {
+        const arquivos = Array.from(input.files || []); if (!arquivos.length) return;
+        try {
+            const limite = 10 * 1024 * 1024;
+            if (arquivos.some(f => f.size > limite || (!f.type.startsWith('image/') && f.type !== 'application/pdf'))) {
+                alert('Cada atestado deve ser PDF ou imagem e ter no máximo 10 MB.'); return;
+            }
+            const btn = document.querySelector(`button[onclick="anexarAtestado('${id}')"]`);
+            if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+            const atestadosAtuais = Array.isArray(p.atestados) ? [...p.atestados] : [];
+            for (const arquivo of arquivos) {
+                const nomeSeguro = arquivo.name.replace(/[^\w.\-() ]/g, '_');
+                const caminho = `atestados/${id}/${Date.now()}_${nomeSeguro}`;
+                const storageRef = ref(storage, caminho);
+                await uploadBytes(storageRef, arquivo);
+                const url = await getDownloadURL(storageRef);
+                atestadosAtuais.push({ nome: arquivo.name, url, caminho, data: new Date().toISOString().slice(0,10) });
+            }
+            await updateDoc(doc(db, 'participantes', id), { atestados: atestadosAtuais });
+            p.atestados = atestadosAtuais; atualizarTabela(participantes);
+            alert(`${arquivos.length} atestado(s) anexado(s) com sucesso.`);
+        } catch (e) { console.error('Erro ao anexar atestado:', e); alert('Não foi possível anexar o atestado. Verifique a conexão e as regras do Firebase Storage.'); }
+        finally { input.remove(); }
+    });
+    document.body.appendChild(input); input.click();
 }
 
 window.onload = () => {
