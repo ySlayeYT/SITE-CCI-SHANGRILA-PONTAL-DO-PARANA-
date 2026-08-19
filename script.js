@@ -1,7 +1,6 @@
 // Importando o Firebase diretamente do Google
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // SUAS CHAVES DO FIREBASE
 const firebaseConfig = {
@@ -17,7 +16,6 @@ const firebaseConfig = {
 // Inicializando o Banco de Dados
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 // Deixa o escopo global acessar as funções
 window.switchTab = switchTab;
@@ -116,7 +114,7 @@ async function salvarOuAtualizarNoFirebase(participante) {
 // Buscar do Firebase
 async function buscarParticipantesNoBanco() {
     const tbody = document.getElementById('tabela-corpo');
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Carregando dados da nuvem...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Carregando dados da nuvem...</td></tr>';
     
     participantes = [];
     try {
@@ -129,7 +127,7 @@ async function buscarParticipantesNoBanco() {
         atualizarTabela(participantes);
     } catch (e) {
         console.error("Erro ao buscar: ", e);
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Erro ao buscar dados.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:red;">Erro ao buscar dados.</td></tr>';
     }
 }
 
@@ -167,25 +165,45 @@ function filtrarLista() {
 
 // Função para carregar os dados na aba de cadastro para edição
 function editarFicha(id) {
-    const p = participantes.find(part => part.id === id);
-    if (!p) return;
+    const p = participantes.find(part => String(part.id) === String(id));
 
-    idEditando = id;
+    if (!p) {
+        alert('Não foi possível localizar este participante. Atualize a lista e tente novamente.');
+        return;
+    }
 
-    document.getElementById('nome').value = p.nome || '';
-    document.getElementById('cpf').value = p.cpf || '';
-    document.getElementById('data_nasc').value = p.data_nasc || '';
-    document.getElementById('data_inscricao').value = p.data_inscricao || (p.ano_inscricao ? `${p.ano_inscricao}-01-01` : '');
-    document.getElementById('tel_pessoal').value = p.tel_pessoal || '';
-    document.getElementById('tel_resp').value = p.tel_resp || '';
-    document.getElementById('balneario').value = p.balneario || '';
-    document.getElementById('endereco').value = p.endereco || '';
-    document.getElementById('profissao').value = p.profissao || '';
-    document.getElementById('atividade').value = p.atividade || '';
-    document.getElementById('medicamentos').value = p.medicamentos || '';
+    idEditando = p.id;
+
+    // Preenche os campos com segurança, inclusive para cadastros antigos.
+    const campos = {
+        nome: p.nome || '',
+        cpf: p.cpf || '',
+        data_nasc: p.data_nasc || '',
+        data_inscricao: p.data_inscricao || (p.ano_inscricao ? `${p.ano_inscricao}-01-01` : ''),
+        tel_pessoal: p.tel_pessoal || '',
+        tel_resp: p.tel_resp || '',
+        balneario: p.balneario || '',
+        endereco: p.endereco || '',
+        profissao: p.profissao || '',
+        atividade: p.atividade || '',
+        medicamentos: p.medicamentos || ''
+    };
+
+    for (const [campo, valor] of Object.entries(campos)) {
+        const elemento = document.getElementById(campo);
+        if (elemento) elemento.value = valor;
+    }
 
     switchTab('cadastro');
-    document.querySelector('.btn-submit').textContent = "Atualizar Ficha";
+
+    const btnSalvar = document.querySelector('.btn-submit');
+    if (btnSalvar) {
+        btnSalvar.textContent = 'Atualizar Ficha';
+        btnSalvar.disabled = false;
+    }
+
+    // Leva o usuário diretamente para o início da ficha.
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // Excluir do Firebase
@@ -245,36 +263,96 @@ function imprimirFicha(id) {
     window.print();
 }
 
-function anexarAtestado(id) {
+function lerArquivoComoBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error("Falha ao ler o arquivo."));
+
+        reader.readAsDataURL(file);
+    });
+}
+
+async function anexarAtestado(id) {
     const p = participantes.find(part => part.id === id);
     if (!p) return;
+
     const input = document.createElement('input');
-    input.type = 'file'; input.accept = '.pdf,image/*'; input.multiple = true; input.style.display = 'none';
+    input.type = 'file';
+    input.accept = '.pdf,image/*';
+    input.multiple = true;
+    input.style.display = 'none';
+
     input.addEventListener('change', async () => {
-        const arquivos = Array.from(input.files || []); if (!arquivos.length) return;
+        const arquivos = Array.from(input.files || []);
+        if (!arquivos.length) {
+            input.remove();
+            return;
+        }
+
+        const btn = document.querySelector(`button[onclick="anexarAtestado('${id}')"]`);
+        const textoOriginal = btn ? btn.textContent : '';
+
         try {
-            const limite = 10 * 1024 * 1024;
-            if (arquivos.some(f => f.size > limite || (!f.type.startsWith('image/') && f.type !== 'application/pdf'))) {
-                alert('Cada atestado deve ser PDF ou imagem e ter no máximo 10 MB.'); return;
+            // Limite conservador para não estourar o tamanho de um documento
+            // do Firestore. Para arquivos grandes, o usuário deve reduzir o PDF.
+            const limite = 3 * 1024 * 1024;
+
+            const invalidos = arquivos.filter(file =>
+                file.size > limite ||
+                (!file.type.startsWith('image/') && file.type !== 'application/pdf')
+            );
+
+            if (invalidos.length) {
+                alert('O atestado deve ser PDF ou imagem e ter no máximo 3 MB por arquivo.');
+                return;
             }
-            const btn = document.querySelector(`button[onclick="anexarAtestado('${id}')"]`);
-            if (btn) { btn.disabled = true; btn.textContent = 'Enviando...'; }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Anexando...';
+            }
+
             const atestadosAtuais = Array.isArray(p.atestados) ? [...p.atestados] : [];
+
             for (const arquivo of arquivos) {
-                const nomeSeguro = arquivo.name.replace(/[^\w.\-() ]/g, '_');
-                const caminho = `atestados/${id}/${Date.now()}_${nomeSeguro}`;
-                const storageRef = ref(storage, caminho);
-                await uploadBytes(storageRef, arquivo);
-                const url = await getDownloadURL(storageRef);
-                atestadosAtuais.push({ nome: arquivo.name, url, caminho, data: new Date().toISOString().slice(0,10) });
+                const base64 = await lerArquivoComoBase64(arquivo);
+
+                atestadosAtuais.push({
+                    nome: arquivo.name,
+                    tipo: arquivo.type,
+                    tamanho: arquivo.size,
+                    arquivo: base64,
+                    data: new Date().toISOString().slice(0, 10)
+                });
             }
-            await updateDoc(doc(db, 'participantes', id), { atestados: atestadosAtuais });
-            p.atestados = atestadosAtuais; atualizarTabela(participantes);
+
+            await updateDoc(doc(db, "participantes", id), {
+                atestados: atestadosAtuais
+            });
+
+            p.atestados = atestadosAtuais;
+            atualizarTabela(participantes);
+
             alert(`${arquivos.length} atestado(s) anexado(s) com sucesso.`);
-        } catch (e) { console.error('Erro ao anexar atestado:', e); alert('Não foi possível anexar o atestado. Verifique a conexão e as regras do Firebase Storage.'); }
-        finally { input.remove(); }
+        } catch (e) {
+            console.error("Erro ao anexar atestado:", e);
+            alert(
+                'Não foi possível anexar o atestado. ' +
+                'Verifique a conexão com o Firebase e tente novamente.'
+            );
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = textoOriginal || 'Anexar atestado';
+            }
+            input.remove();
+        }
     });
-    document.body.appendChild(input); input.click();
+
+    document.body.appendChild(input);
+    input.click();
 }
 
 window.onload = () => {
