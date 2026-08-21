@@ -39,7 +39,17 @@ function switchTab(tabId) {
     document.getElementById(`sec-${tabId}`).classList.add('active');
     document.getElementById(`btn-tab-${tabId}`).classList.add('active');
 
-    if(tabId === 'lista') buscarParticipantesNoBanco();
+    if(tabId === 'lista') {
+        buscarParticipantesNoBanco();
+    }
+}
+
+function filtrarLista() {
+    const input = document.getElementById('search-input');
+    if (!input) return;
+    const termo = input.value.toLowerCase();
+    const listaFiltrada = participantes.filter(p => p.nome && p.nome.toLowerCase().includes(termo));
+    atualizarTabela(listaFiltrada);
 }
 
 function convertImageToBase64(file, callback) {
