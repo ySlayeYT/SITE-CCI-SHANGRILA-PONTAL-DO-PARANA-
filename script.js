@@ -235,6 +235,14 @@ function imprimirFicha(id) {
     const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : '';
     
     printArea.innerHTML = `
+        function imprimirFicha(id) {
+    const p = participantes.find(part => part.id === id);
+    if(!p) return;
+    const printArea = document.getElementById('print-area');
+    const fotoHtml = p.foto ? `<img src="${p.foto}" class="ficha-photo" alt="Foto">` : `<div class="ficha-photo-placeholder">Sem Foto</div>`;
+    const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : '';
+    
+    printArea.innerHTML = `
         <div class="ficha-print">
             <div class="ficha-header"><h2>CCI Pontal do Paraná - Ficha de Inscrição</h2><p>Data da inscrição: ${dataInscricao}</p></div>
             <div class="ficha-content">
@@ -253,8 +261,8 @@ function imprimirFicha(id) {
                 </div>
             </div>
             <div class="assinatura-page">
-                <h2>Assinatura do Participante</h2>
-                <p class="assinatura-texto">Declaro que as informações desta ficha foram conferidas e estou de acordo com os dados apresentados.</p>
+                <h2>Termo de Autorização e Ciência</h2>
+                <p class="assinatura-texto">Eu, <strong>${p.nome}</strong>, portador(a) do RG ____________________, autorizo o Centro de Convivência do Idoso de Pontal do Paraná (CCI) a utilizar minha imagem, voz e depoimentos em materiais de divulgação institucional, sem ônus e por tempo indeterminado, garantidos o uso ético e o direito de revogação por escrito a qualquer momento. Declaro também estar ciente de que, para participar das atividades físicas, é OBRIGATÓRIA a apresentação de atestado médico. Por estar de acordo, assino o presente termo.</p>
                 <div class="assinatura-data">Data: ____/____/________</div>
                 <div class="assinatura-linha"></div>
                 <p class="assinatura-nome">${p.nome}</p><p class="assinatura-legenda">Assinatura do participante</p>
