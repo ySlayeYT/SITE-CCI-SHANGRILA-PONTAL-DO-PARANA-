@@ -4,13 +4,13 @@ import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, updateDoc } 
 
 // SUAS CHAVES DO FIREBASE
 const firebaseConfig = {
-  apiKey: "AIzaSyDtrs8K4SB96b5VHhj3gW2yLUfegS9DHGs",
-  authDomain: "sistema-cci-pontal-do-parana.firebaseapp.com",
-  projectId: "sistema-cci-pontal-do-parana",
-  storageBucket: "sistema-cci-pontal-do-parana.firebasestorage.app",
-  messagingSenderId: "957616639810",
-  appId: "1:957616639810:web:7d258a77f17110eed9c2db",
-  measurementId: "G-N7RJWLV6P1"
+    apiKey: "AIzaSyDtrs8K4SB96b5VHhj3gW2yLUfegS9DHGs",
+    authDomain: "sistema-cci-pontal-do-parana.firebaseapp.com",
+    projectId: "sistema-cci-pontal-do-parana",
+    storageBucket: "sistema-cci-pontal-do-parana.firebasestorage.app",
+    messagingSenderId: "957616639810",
+    appId: "1:957616639810:web:7d258a77f17110eed9c2db",
+    measurementId: "G-N7RJWLV6P1"
 };
 
 // Inicializando o Banco de Dados
@@ -171,12 +171,6 @@ function atualizarTabela(lista) {
     });
 }
 
-function filtrarLista() {
-    const termo = document.getElementById('search-input').value.toLowerCase();
-    const listaFiltrada = participantes.filter(p => p.nome.toLowerCase().includes(termo));
-    atualizarTabela(listaFiltrada);
-}
-
 // Função para carregar os dados na aba de cadastro para edição
 function editarFicha(id) {
     const p = participantes.find(part => String(part.id) === String(id));
@@ -238,14 +232,6 @@ function formatarData(dataISO) {
 }
 
 function imprimirFicha(id) {
-    const p = participantes.find(part => part.id === id);
-    if(!p) return;
-    const printArea = document.getElementById('print-area');
-    const fotoHtml = p.foto ? `<img src="${p.foto}" class="ficha-photo" alt="Foto">` : `<div class="ficha-photo-placeholder">Sem Foto</div>`;
-    const dataInscricao = p.data_inscricao ? formatarData(p.data_inscricao) : '';
-    
-    printArea.innerHTML = `
-        function imprimirFicha(id) {
     const p = participantes.find(part => part.id === id);
     if(!p) return;
     const printArea = document.getElementById('print-area');
